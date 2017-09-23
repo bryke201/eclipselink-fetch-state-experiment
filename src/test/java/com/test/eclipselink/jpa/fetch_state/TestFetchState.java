@@ -28,46 +28,30 @@ import com.test.eclipselink.jpa.fetch_state.entities.RootEntity;
  * 
  * @author http://briaguy.blogspot.com/
  *
- *         This set of tests is for familiarization with Eclipselink's fetch
- *         state and its management.
+ * Knowing if attributes and associations of a JPA entity are initialized has its uses, among others:
+ * 		-for when there is need to define custom TraversableResolvers for partially fetched entity validation
+ * 		-creating custom optimization APIs using a JPA provider's internals
  * 
- *         JPA users usually don't have to 'extremely' optimize their fetching,
- *         especially when data access is cheap and physical resources are
- *         abundant. However, when they do, the providers are held against how
- *         transparent and predictable their implementations are when it comes
- *         to fetch state and optimization options.
+ * For some providers, this can be a trivial matter (heck, even JPA provides it optionally in the spec), 
+ * though I find that the more optimization options there are, even more complex are the rules in place. 
  * 
- *         More powerful and configurable providers may tend to have less
- *         transparency and predictability, hence the need for such users to do
- *         some deep digging and understanding.
+ * Unfortunately, Eclipselink is one of those providers with considerable complexity, even as it implements the
+ * method defined by the JPA spec (PersistenceUtil.isLoaded methods).
  * 
- *         True enough, when users only need a general set of shallow
- *         optimization options, deeper knowledge of provider-specific fetch
- *         state implementations can be forgone.
+ * This test set explores how Eclipselink behaves when different ways of identifying entity initialization state are used.
  * 
- *         For other users who plan to make use of more complex optimization
- *         options, I hope that this set helps.
- * 
- *         Some applications of this knowledge include the following: 
- *         		-defining custom bean validation TraversableResolvers for validation of
- *         			entities that are partially fetched 
- *         		-creating custom optimization APIs using Eclipselink's internals 
- *         		-when it is simply handy to know whether an attribute or association is initialized or not
- * 
- *         This test set works with the following setup: 
- *         		-the Eclipselink version used is 2.5.2
- *         		-RootEntity is composed of two basic fields and four associations, where each association
- *         			depicts a common way of mapping 
- *         		-OwnedAssoc has a LAZY basic field relevant to demonstrations in this test set 
- *         		-each ToOne association is declared LAZY, while ToMany/collection associations are left as
- *         			they are already LAZY by default 
- *         		-the Eclipselink L2 cache is turned off (see persistence.xml property "eclipselink.cache.shared.default")
- *         			so each context made is fresh
- *         		-batching is enabled via the persistence.xml property "eclipselink.jdbc.batch-writing" value="Oracle-JDBC"
- *         			to show a good optimization option; this is responsible for the batch INSERT and UPDATE statements
- *         			executed when merging the collection associations of RootEntity
- *         		-the full set (by default) of woven capabilities of Eclipselink are used; using only a subset can introduce
- *         			many more complications, which would dramatically increase the things to be observed, so it was avoided
+ * This test set works with the following setup: 
+ *      -the Eclipselink version used is 2.5.2
+ *      -RootEntity is composed of two basic fields and four associations, where each association depicts a common way of mapping 
+ *      -OwnedAssoc has a LAZY basic field relevant to demonstrations in this test set 
+ *      -each ToOne association is declared LAZY, while ToMany/collection associations are left as they are already LAZY by default 
+ *      -the Eclipselink L2 cache is turned off (see persistence.xml property "eclipselink.cache.shared.default")
+ *         	so each context made is fresh
+ *      -batching is enabled via the persistence.xml property "eclipselink.jdbc.batch-writing" value="Oracle-JDBC"
+ *         	to show a good optimization option; this is responsible for the batch INSERT and UPDATE statements
+ *         	executed when merging the collection associations of RootEntity
+ *      -the full set (by default) of woven capabilities of Eclipselink are used; using only a subset can introduce
+ *         	many more complications, which would dramatically increase the things to be observed, so it was avoided
  *
  */
 
@@ -128,6 +112,8 @@ public class TestFetchState {
 
 	/**
 	 * 
+	 * This first part aims to build (or refresh) a quick background on how Eclipselink entities manage partial fetching.
+	 * 
 	 * The following tests describe the presence of default FetchGroups when entities are queried for without explicit
 	 * FetchGroup hints.
 	 * 
@@ -140,7 +126,7 @@ public class TestFetchState {
 	 */
 
 	@Test
-	public void ENTITY_WITH_LAZY_ASSOCS_has_no_default_FetchGroup() {
+	public void ENTITY_WITH_ONLY_LAZY_ASSOCS_has_no_default_FetchGroup() {
 		EntityManager em = createEM();
 		RootEntity rootEnt = findRootEntityById(1L, em);
 
@@ -196,6 +182,13 @@ public class TestFetchState {
 
 	/**
 	 * 
+	 * In essence, default FetchGroups only exist for entities that have specified a basic mapping to be LAZY by default configuration
+	 * (where default configuration means having been taken from an ORM XML annotation).
+	 * 
+	 * 
+	 * As mentioned, JPA provides the PersistenceUnitUtil interface for implementation by providers as to provide a way for users
+	 * to find out whether an attribute or association is loaded or not.
+	 * 
 	 * Built from the knowledge from the previous tests, this next set describes the behavior of the Eclipselink implementation of
 	 * PersistenceUnitUtil, which is part of the JPA spec for determining entity load state.
 	 * 
@@ -231,7 +224,7 @@ public class TestFetchState {
 	 * UNKNOWN.
 	 * 
 	 * A risk appears as early as within the code of the PersistenceUtil inner class of Persistence, where having a return value
-	 * of LoadState.UNKNOWN leads to the isLoaded() method returning "true". Honestly, this was a decision that could have gone eitherway;
+	 * of LoadState.UNKNOWN leads to the isLoaded() method returning "true". Honestly, this was a decision that could have gone either way;
 	 * it had to at least be made.
 	 * 
 	 * ============javax.persistence.spi.ProviderUtil
@@ -252,7 +245,7 @@ public class TestFetchState {
 	 * it seems that, from the second condition, it is possible that the check could return "false" regardless of which attribute is queried
 	 * for if an attribute that was eager by default was not initialized (possible through custom FetchGroups).
 	 * 
-	 * The ProviderUtil methods isLoadedWithoutReference and isLoadedWithReference is disambiguated in the comment by mentioning that
+	 * The ProviderUtil methods isLoadedWithoutReference and isLoadedWithReference is disambiguated in a further comment by mentioning that
 	 * "isLoadedWithReference" is PERMITTED to obtain a reference to the attribute value. In essence, the spec PERMITS initialization
 	 * of the attribute, BUT Eclipselink DOES NOT DO THIS. After all, we were only asking if it was loaded.
 	 * 
@@ -268,12 +261,18 @@ public class TestFetchState {
 	 *  	 If the provider cannot determine if the entity has been provided by itself, this method returns LoadState.UNKNOWN."
 	 *  
 	 * Because it has no specific attributes to worry about, this method is simpler: it specifies that LOADED should be returned if
-	 * everything in the default setting set as EAGER is initialized.
+	 * everything in the default setting set as EAGER is initialized. The comment for this method describes behavior similar to the second
+	 * condition in the comment of isLoadedWith/outReference.
+	 * 
+	 * If these methods behave such that the entire entity is considered to be NOT_LOADED (via dyanmically modifying the FetchGroup so that
+	 * it differs from the default configuration) could potentially disregard checking specific attributes, 
+	 * then the utility might have been quite misleading.
 	 * 
 	 */
 
 	/**
-	 * Following from the rules previously mentioned, the following test should follow the standard.
+	 * Following from the rules previously mentioned, the following test should follow the standard, assuming that following entity
+	 * defaults would produce predictable results.
 	 * 
 	 * This time, we use RootEntity, where only associations were made lazy, much like the other entities.
 	 * 
@@ -316,12 +315,12 @@ public class TestFetchState {
 	/**
 	 * So far, so good. However, the succeeding sets will change that.
 	 * 
-	 * Currently, it seems that the PersistenceUtil methods work properly when dealing with entities that use their
-	 * DEFAULT (basically annotation, XML, or static-configured) fetch groups.
+	 * Currently, as mentioned, it seems that the PersistenceUtil methods work properly when dealing with entities that use their
+	 * DEFAULT fetch groups.
 	 * 
-	 * What about if we introduce custom fetch groups, as we normally would if we want to dynamically configure fetching?
+	 * What if we introduce custom fetch groups, as we normally would if we want to dynamically configure fetching?
 	 * 
-	 * Let's do just that by introducing custom FetchGroups.
+	 * Let's do just that.
 	 * 
 	 */
 
@@ -376,10 +375,11 @@ public class TestFetchState {
 	 * Honestly, PersistenceUtil method names seemed to provide a utility to check entity state regardless of
 	 * how it was fetched. It was quite misleading.
 	 * 
-	 * Of course, this raises red flags in using the utility for entities that were fetched using a dynamic custom FetchGroup.
+	 * Of course, this raises red flags in using the utility for entities that were fetched using a dynamic custom FetchGroup as
+	 * dynamic configuration using custom FetchGroups is pretty much normal usage.
 	 * 
 	 * Moreover, with the bonus at last assert, we find that a result of "false" was produced. Either
-	 * it failed silently (which could allow some programming errors) or it was completely ignored.
+	 * it failed silently (which could allow some programming errors) or it was completely ignored (the answer is the latter).
 	 * 
 	 * 
 	 * 
@@ -391,7 +391,7 @@ public class TestFetchState {
 	 * that is declared to be LAZY by default (via ORM XML or annotations), but is not loaded (via custom FetchGroup, among other ways of dynamic
 	 * configuration), causing a return value of "false" ("true" if no such attribute or association was found).
 	 * 
-	 * In short, if the custom FetchGroup is not aligned with the default configuration, the PersistenceUtil methods will all
+	 * In short, if the custom FetchGroup is not aligned with the default configuration, all of the PersistenceUtil methods will
 	 * return "false".
 	 * 
 	 * 
@@ -596,9 +596,6 @@ public class TestFetchState {
 		EntityManager em = createEM();
 		RootEntity ent = findRootEntityById(1L, em);
 
-		EntityManagerFactoryImpl emfi = (EntityManagerFactoryImpl) emf;
-		AbstractSession sesh = emfi.getServerSession();
-
 		assertAttLoaded_EMF(ent, "data1");
 		assertAttLoaded_EMF(ent, "data2");
 		assertAttNotLoaded_EMF(ent, "ownedAssoc");
@@ -637,9 +634,6 @@ public class TestFetchState {
 		EntityManager em = createEM();
 		OwnedAssoc ownedAssoc = findOwnedAssocById(1L, em);
 
-		EntityManagerFactoryImpl emfi = (EntityManagerFactoryImpl) emf;
-		AbstractSession sesh = emfi.getServerSession();
-
 		assertAttNotLoaded_EMF(ownedAssoc, "data1");
 		assertAttLoaded_EMF(ownedAssoc, "data2");
 		em.close();
@@ -655,9 +649,6 @@ public class TestFetchState {
 		applyFetchGroupToQuery(query, "data1", "ownedAssoc.data1", "owningAssoc.data2", "keyCollectionAssoc.data1",
 				"refCollectionAssoc.data2");
 		RootEntity ent = query.getSingleResult();
-
-		EntityManagerFactoryImpl emfi = (EntityManagerFactoryImpl) emf;
-		AbstractSession sesh = emfi.getServerSession();
 
 		//ROOT ENTITY
 		assertAttLoaded_EMF(ent, "data1");
