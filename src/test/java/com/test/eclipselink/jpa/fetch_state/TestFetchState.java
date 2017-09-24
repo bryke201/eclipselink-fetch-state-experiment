@@ -223,9 +223,10 @@ public class TestFetchState {
 	 * The ProviderUtil specifies a return type of javax.persitence.spi.LoadState, an enum with three choices: LOADED, NOT_LOADED, and
 	 * UNKNOWN.
 	 * 
-	 * A risk appears as early as within the code of the PersistenceUtil inner class of Persistence, where having a return value
-	 * of LoadState.UNKNOWN leads to the isLoaded() method returning "true". Honestly, this was a decision that could have gone either way;
-	 * it had to at least be made.
+	 * Note that Within the code of the PersistenceUtil inner class of Persistence, a return value
+	 * of LoadState.UNKNOWN leads to the isLoaded() method returning "true". Though it could have been decided that false is returned,
+	 * such a decision is actually quite trivial as the providers can predetermine and decide accordingly,
+	 * based on their implementation (hey, they know better!).
 	 * 
 	 * ============javax.persistence.spi.ProviderUtil
 	 * 
