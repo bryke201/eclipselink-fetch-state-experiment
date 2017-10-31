@@ -743,7 +743,7 @@ public class TestFetchState {
 	 * To wrap this up, a summary will be shown in a blog post (http://briaguy.blogspot.com/), where this
 	 * code would be linked to anyway.
 	 * 
-	 * As a quick takeaway, the definite winner in this discussion is EntityManagerFactoryImpl.
+	 * As a quick takeaway, the definite winner in this discussion is EntityManagerFactoryImpl;
 	 * 
 	 * Hope this helped!
 	 * 
